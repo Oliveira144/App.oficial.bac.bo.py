@@ -1,914 +1,497 @@
 import streamlit as st
-import math
-import time
-from datetime import datetime
 import pandas as pd
 import numpy as np
-from collections import defaultdict
+import plotly.express as px
+from collections import Counter
+from scipy import stats
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
 
-# Probabilidades teóricas dos dados (soma de 2 dados)
-DICE_PROBABILITIES = {
-    2: 1/36, 3: 2/36, 4: 3/36, 5: 4/36, 6: 5/36, 7: 6/36,
-    8: 5/36, 9: 4/36, 10: 3/36, 11: 2/36, 12: 1/36
-}
+# --- Configuração Avançada da Página ---
+st.set_page_config(page_title="Bac Bo Inteligente Premium", layout="wide", initial_sidebar_state="expanded")
+st.title("🎲 Analisador de Alta Precisão - Bac Bo Evolution (v4.0)")
 
-# Inicializar o estado da sessão
-if 'results' not in st.session_state:
-    st.session_state.results = []
-
-if 'current_stats' not in st.session_state:
-    st.session_state.current_stats = {
-        'player': 0,
-        'banker': 0,
-        'tie': 0,
-        'totalGames': 0
+# Estilos CSS otimizados
+st.markdown("""
+<style>
+    /* Estilos aprimorados para destaque visual */
+    .stAlert {
+        padding: 1.5rem;
+        border-radius: 10px;
+        margin-bottom: 1.5rem;
+        font-size: 1.3em;
+        font-weight: bold;
+        text-align: center;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
-
-if 'advanced_analysis' not in st.session_state:
-    st.session_state.advanced_analysis = {
-        'patterns': {},
-        'predictions': [],
-        'confidence': 0,
-        'volatility': 0,
-        'momentum': 0,
-        'cyclicalTrends': {},
-        'riskLevel': 'LOW'
-    }
-
-# Funções auxiliares
-def calculate_surprise(pScore, bScore):
-    pProb = DICE_PROBABILITIES.get(pScore, 0)
-    bProb = DICE_PROBABILITIES.get(bScore, 0)
-    combinedProb = pProb * bProb
-    return round((1 - combinedProb) * 100)
-
-def add_result(player_score, banker_score):
-    try:
-        pScore = int(player_score)
-        bScore = int(banker_score)
-    except ValueError:
-        st.error("Por favor, insira números válidos.")
-        return
-
-    if pScore < 2 or pScore > 12 or bScore < 2 or bScore > 12:
-        st.error("As pontuações devem estar entre 2 e 12.")
-        return
-
-    if pScore > bScore:
-        outcome = 'PLAYER'
-        color = '#4285F4' # Blue for Player
-    elif bScore > pScore:
-        outcome = 'BANKER'
-        color = '#EA4335' # Red for Banker
-    else:
-        outcome = 'TIE'
-        color = '#34A853' # Green for Tie
-
-    new_result = {
-        'id': time.time(),
-        'player': pScore,
-        'banker': bScore,
-        'outcome': outcome,
-        'color': color,
-        'timestamp': datetime.now().strftime("%H:%M:%S"),
-        'playerProb': DICE_PROBABILITIES.get(pScore, 0),
-        'bankerProb': DICE_PROBABILITIES.get(bScore, 0),
-        'surprise': calculate_surprise(pScore, bScore),
-        'gameNumber': len(st.session_state.results) + 1
-    }
-
-    # Adiciona e mantém no máximo 100 resultados
-    st.session_state.results = [new_result] + st.session_state.results[:99]
-    perform_advanced_analysis()
-
-def calculate_basic_stats():
-    stats = {
-        'player': 0,
-        'banker': 0,
-        'tie': 0,
-        'totalGames': len(st.session_state.results)
-    }
-
-    for result in st.session_state.results:
-        stats[result['outcome'].lower()] += 1
-
-    return stats
-
-def analyze_streaks():
-    results = st.session_state.results
-    if not results:
-        return {}
-
-    current_streak = {'type': None, 'count': 0}
-    streaks = {'player': [], 'banker': [], 'tie': []}
-
-    for result in results:
-        outcome = result['outcome'].lower()
-        if current_streak['type'] == outcome:
-            current_streak['count'] += 1
-        else:
-            if current_streak['type'] and current_streak['count'] > 0:
-                streaks[current_streak['type']].append(current_streak['count'])
-            current_streak = {'type': outcome, 'count': 1}
-
-    if current_streak['type'] and current_streak['count'] > 0:
-        streaks[current_streak['type']].append(current_streak['count'])
-
-
-    max_streaks = {
-        'player': max(streaks['player']) if streaks['player'] else 0,
-        'banker': max(streaks['banker']) if streaks['banker'] else 0,
-        'tie': max(streaks['tie']) if streaks['tie'] else 0
-    }
-
-    avg_streaks = {
-        'player': sum(streaks['player'])/len(streaks['player']) if streaks['player'] else 0,
-        'banker': sum(streaks['banker'])/len(streaks['banker']) if streaks['banker'] else 0,
-        'tie': sum(streaks['tie'])/len(streaks['tie']) if streaks['tie'] else 0
-    }
-
-    return {
-        'maxStreaks': max_streaks,
-        'avgStreaks': avg_streaks,
-        'currentStreak': current_streak
-    }
-
-def analyze_alternations():
-    results = st.session_state.results
-    if len(results) < 2:
-        return {'rate': 0, 'pattern': 'NONE', 'alternations': 0, 'consecutives': 0}
-
-    alternations = 0
+    .alert-success { background: linear-gradient(135deg, #28a745, #1e7e34); }
+    .alert-danger { background: linear-gradient(135deg, #dc3545, #bd2130); }
+    .alert-warning { background: linear-gradient(135deg, #ffc107, #e0a800); }
     
-    for i in range(len(results) - 1, 0, -1):
-        if results[i]['outcome'] != results[i-1]['outcome']:
-            alternations += 1
-
-    consecutives = (len(results) - 1) - alternations
-    alternation_rate = alternations / (len(results) - 1)
-    pattern = 'HIGH_ALT' if alternation_rate > 0.6 else 'LOW_ALT' if alternation_rate < 0.4 else 'BALANCED'
-
-    return {'rate': alternation_rate, 'pattern': pattern, 'alternations': alternations, 'consecutives': consecutives}
-
-def analyze_hot_cold_numbers():
-    number_freq = {'player': defaultdict(int), 'banker': defaultdict(int)}
-    
-    for result in st.session_state.results:
-        number_freq['player'][result['player']] += 1
-        number_freq['banker'][result['banker']] += 1
-
-    def get_hot_cold(freq):
-        entries = [{'num': int(k), 'count': v} for k, v in freq.items()]
-        if not entries:
-            return {'hot': [], 'cold': []}
-        entries.sort(key=lambda x: x['count'], reverse=True)
-        return {
-            'hot': entries[:3],
-            'cold': entries[-3:][::-1]
-        }
-
-    return {
-        'player': get_hot_cold(number_freq['player']),
-        'banker': get_hot_cold(number_freq['banker'])
+    /* Melhorias na tabela */
+    .stDataFrame {
+        border-radius: 8px;
+        overflow: hidden;
     }
-
-def analyze_distribution():
-    results = st.session_state.results
-    n = len(results)
-    if n == 0:
-        return {'deviations': {}, 'expected': {'player': 0, 'banker': 0, 'tie': 0}}
-    
-    expected_player_ratio = 0.486
-    expected_banker_ratio = 0.486
-    expected_tie_ratio = 0.028
-
-    expected_player = n * expected_player_ratio
-    expected_banker = n * expected_banker_ratio
-    expected_tie = n * expected_tie_ratio
-
-    stats = st.session_state.current_stats
-    deviations = {
-        'player': abs(stats['player'] - expected_player) / (expected_player or 1),
-        'banker': abs(stats['banker'] - expected_banker) / (expected_banker or 1),
-        'tie': abs(stats['tie'] - expected_tie) / (expected_tie or 1)
+    /* Destaque para as métricas */
+    .stMetric {
+        background-color: #2e2f3a;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
+</style>
+""", unsafe_allow_html=True)
 
-    return {'deviations': deviations, 'expected': {'player': expected_player, 'banker': expected_banker, 'tie': expected_tie}}
+# --- Inicialização do Session State ---
+if 'historico_dados' not in st.session_state:
+    st.session_state.historico_dados = []
+    st.session_state.padroes_detectados = []
+    st.session_state.modelo_treinado = None
 
-def analyze_correlations():
-    results = st.session_state.results
-    if len(results) < 2:
-        return {'playerNumberCorrelation': 0, 'bankerNumberCorrelation': 0, 'outcomeCorrelation': 0}
+# --- Entrada de Dados (Interface Aprimorada) ---
+st.markdown("""
+### 📥 Entrada de Resultados
+Adicione resultados no formato: **Player,Banker,Resultado**  
+Exemplo: `11,4,P` para Player, `7,11,B` para Banker, `6,6,T` para Tie
+""")
+
+with st.expander("🔍 Adicionar Resultados Individualmente", expanded=True):
+    col1, col2, col3, col4 = st.columns([1,1,1,0.5])
+    with col1:
+        player_soma = st.number_input("Soma Player (2-12)", min_value=2, max_value=12, value=7, key="player_soma_input")
+    with col2:
+        banker_soma = st.number_input("Soma Banker (2-12)", min_value=2, max_value=12, value=7, key="banker_soma_input")
+    with col3:
+        resultado_op = st.selectbox("Resultado", ['P', 'B', 'T'], key="resultado_select")
+    with col4:
+        st.write("")
+        st.write("")
+        if st.button("➕ Adicionar", use_container_width=True):
+            st.session_state.historico_dados.append((player_soma, banker_soma, resultado_op))
+            st.rerun()
+
+# --- Histórico com Visualização Avançada ---
+st.subheader("📋 Histórico de Resultados")
+if st.session_state.historico_dados:
+    df_historico = pd.DataFrame(
+        st.session_state.historico_dados,
+        columns=["Player", "Banker", "Resultado"]
+    )
     
-    player_corr_sum = 0
-    banker_corr_sum = 0
+    # Adicionar colunas analíticas
+    df_historico['Diferenca'] = abs(df_historico['Player'] - df_historico['Banker'])
+    df_historico['SomaTotal'] = df_historico['Player'] + df_historico['Banker']
+    df_historico['Vencedor'] = np.where(
+        df_historico['Resultado'] == 'P', 'Player',
+        np.where(df_historico['Resultado'] == 'B', 'Banker', 'Tie')
+    )
     
-    n_correlate = min(len(results) - 1, 20)
+    # Exibir tabela com métricas
+    st.dataframe(df_historico.tail(20).style
+        .background_gradient(subset=['Player', 'Banker'], cmap='YlGnBu')
+        .applymap(lambda x: 'color: blue' if x == 'P' else ('color: red' if x == 'B' else 'color: green'), 
+                subset=['Resultado']),
+        use_container_width=True, height=400)
+    
+    # Controles do histórico
+    col_hist1, col_hist2, col_hist3 = st.columns([1,1,2])
+    with col_hist1:
+        if st.button("🗑️ Remover Último", use_container_width=True):
+            if st.session_state.historico_dados:
+                st.session_state.historico_dados.pop()
+                st.rerun()
+    with col_hist2:
+        if st.button("🧹 Limpar Tudo", use_container_width=True, type="secondary"):
+            st.session_state.historico_dados = []
+            st.session_state.padroes_detectados = []
+            st.rerun()
+    with col_hist3:
+        st.info(f"Total de registros: {len(df_historico)} | Último: {df_historico.iloc[-1]['Player']}-{df_historico.iloc[-1]['Banker']}-{df_historico.iloc[-1]['Resultado']}")
+else:
+    st.warning("Nenhum dado no histórico. Adicione resultados para iniciar a análise.")
 
-    for i in range(1, n_correlate + 1):
-        curr_idx = i - 1
-        prev_idx = i
+# --- Entrada em Massa com Validação Avançada ---
+with st.expander("📤 Importar Dados em Massa", expanded=False):
+    historico_input_mass = st.text_area("Cole múltiplas linhas (1 linha = Player,Banker,Resultado)", height=150)
+    
+    if st.button("Processar Dados em Massa", use_container_width=True):
+        linhas = [linha.strip() for linha in historico_input_mass.split("\n") if linha.strip()]
+        novos_dados = []
+        erros = []
         
-        if curr_idx >= 0 and prev_idx < len(results):
-            curr = results[curr_idx]
-            prev = results[prev_idx]
-            player_corr_sum += curr['player'] * prev['player']
-            banker_corr_sum += curr['banker'] * prev['banker']
-
-    player_corr = player_corr_sum / n_correlate if n_correlate > 0 else 0
-    banker_corr = banker_corr_sum / n_correlate if n_correlate > 0 else 0
-
-    return {
-        'playerNumberCorrelation': player_corr,
-        'bankerNumberCorrelation': banker_corr,
-        'outcomeCorrelation': analyze_outcome_correlation()
-    }
-
-def analyze_outcome_correlation():
-    results = st.session_state.results
-    if len(results) < 4:
-        return 0
-
-    matches = 0
-    n_lag_check = min(len(results) - 3, 10) 
-
-    for i in range(3, 3 + n_lag_check):
-        if results[i]['outcome'] == results[i-3]['outcome']:
-            matches += 1
-
-    return matches / n_lag_check if n_lag_check > 0 else 0
-
-def analyze_sequences():
-    results = st.session_state.results
-    if len(results) < 2:
-        return {'sequences': {}, 'topSequences': []}
-
-    sequences = defaultdict(int)
-    
-    chronological_results = results[::-1] 
-
-    for length in range(2, min(5, len(chronological_results) + 1)):
-        for i in range(len(chronological_results) - length + 1):
-            seq = '-'.join(r['outcome'] for r in chronological_results[i:i+length])
-            sequences[seq] += 1
-
-    top_sequences = sorted([(seq, count) for seq, count in sequences.items()], 
-                          key=lambda x: x[1], reverse=True)[:5]
-    
-    top_sequences_formatted = [{
-        'sequence': seq,
-        'count': count,
-        'probability': count / len(chronological_results) if len(chronological_results) > 0 else 0
-    } for seq, count in top_sequences]
-
-    return {'sequences': sequences, 'topSequences': top_sequences_formatted}
-
-def analyze_cyclical_trends():
-    results = st.session_state.results
-    if len(results) < 12:
-        return {}
-
-    cycles = [3, 5, 7, 10]
-    cyclical_data = {}
-
-    chronological_results = results[::-1] 
-
-    for cycle in cycles:
-        buckets = [{'player': 0, 'banker': 0, 'tie': 0} for _ in range(cycle)]
-        
-        for i, result in enumerate(chronological_results):
-            bucket_idx = i % cycle
-            outcome = result['outcome'].lower()
-            buckets[bucket_idx][outcome] += 1
-
-        dominant_phases = []
-        for phase, bucket in enumerate(buckets):
-            total = bucket['player'] + bucket['banker'] + bucket['tie']
-            if total == 0:
-                dominant_phases.append({'phase': phase, 'dominant': 'NONE', 'strength': 0})
-                continue
-            
-            max_val = max(bucket['player'], bucket['banker'], bucket['tie'])
-            if max_val == bucket['player']:
-                dominant = 'PLAYER'
-            elif max_val == bucket['banker']:
-                dominant = 'BANKER'
-            else:
-                dominant = 'TIE'
+        for i, linha in enumerate(linhas, 1):
+            try:
+                partes = [p.strip() for p in linha.split(',')]
+                if len(partes) < 3:
+                    erros.append(f"Linha {i}: Formato inválido (esperado: Player,Banker,Resultado)")
+                    continue
                 
-            dominant_phases.append({'phase': phase, 'dominant': dominant, 'strength': max_val / total})
+                p = int(partes[0])
+                b = int(partes[1])
+                r = partes[2].upper()
+                
+                if not (2 <= p <= 12):
+                    erros.append(f"Linha {i}: Soma Player inválida ({p}) - deve ser 2-12")
+                if not (2 <= b <= 12):
+                    erros.append(f"Linha {i}: Soma Banker inválida ({b}) - deve ser 2-12")
+                if r not in ['P', 'B', 'T']:
+                    erros.append(f"Linha {i}: Resultado inválido ({r}) - deve ser P, B ou T")
+                
+                if not erros or not any(f"Linha {i}" in e for e in erros):
+                    novos_dados.append((p, b, r))
+            except Exception as e:
+                erros.append(f"Linha {i}: Erro de processamento - {str(e)}")
+        
+        if erros:
+            for erro in erros:
+                st.error(erro)
+        else:
+            st.session_state.historico_dados.extend(novos_dados)
+            st.success(f"✅ {len(novos_dados)} linhas adicionadas com sucesso!")
+            st.rerun()
 
-        current_phase_idx = len(chronological_results) % cycle
-        predicted_next_phase = dominant_phases[current_phase_idx] if dominant_phases else None
+# --- Verificação de Dados ---
+if not st.session_state.historico_dados:
+    st.warning("Adicione dados para iniciar a análise!")
+    st.stop()
 
-        cyclical_data[f'cycle{cycle}'] = {
-            'buckets': buckets,
-            'dominantPhases': dominant_phases,
-            'currentPhase': current_phase_idx,
-            'predictedNext': predicted_next_phase
-        }
+df = pd.DataFrame(
+    st.session_state.historico_dados,
+    columns=["Player", "Banker", "Resultado"]
+)
 
-    return cyclical_data
+# --- ALGORITMOS AVANÇADOS DE ANÁLISE ---
 
-def calculate_volatility():
-    results = st.session_state.results
-    if len(results) < 2:
-        return 0
-
-    recent = results[:20]
-    changes = 0
-    total_surprise = 0
-
-    for i in range(1, len(recent)):
-        if recent[i]['outcome'] != recent[i-1]['outcome']:
-            changes += 1
-        total_surprise += recent[i]['surprise']
-
-    change_rate = changes / (len(recent) - 1) if len(recent) > 1 else 0
-    avg_surprise = total_surprise / len(recent) if recent else 0
-    volatility = min(100, (change_rate * 50) + (avg_surprise * 0.5))
+# 1. Sistema de Detecção de Padrões com Pesos Dinâmicos
+def detectar_padroes_avancados(df_analise):
+    padroes = []
+    n = len(df_analise)
     
-    return round(volatility)
-
-def calculate_momentum():
-    results = st.session_state.results
-    if len(results) < 8:
-        return {
-            'direction': 'N/A',
-            'strength': 0,
-            'playerMomentum': 0,
-            'bankerMomentum': 0
-        }
-
-    recent = results[:8]
-    weights = [0.4, 0.3, 0.15, 0.08, 0.04, 0.02, 0.01, 0.005] 
+    if n < 3:
+        return padroes
     
-    player_momentum = 0
-    banker_momentum = 0
-
-    for i, result in enumerate(recent):
-        if i < len(weights):
-            weight = weights[i]
-            if result['outcome'] == 'PLAYER':
-                player_momentum += weight
-            elif result['outcome'] == 'BANKER':
-                banker_momentum += weight
-
-    strength = abs(player_momentum - banker_momentum)
-    direction = 'PLAYER' if player_momentum > banker_momentum else 'BANKER'
-    if player_momentum == banker_momentum:
-        direction = 'TIE/BALANCED'
-
-    return {
-        'direction': direction,
-        'strength': strength,
-        'playerMomentum': player_momentum,
-        'bankerMomentum': banker_momentum
-    }
-
-def generate_predictions():
-    predictions = []
+    # 1. Sequências de Somas Crescentes/Decrescentes
+    player_trend = np.polyfit(range(n), df_analise["Player"], 1)[0]
+    banker_trend = np.polyfit(range(n), df_analise["Banker"], 1)[0]
     
-    predictions.append(generate_reversion_prediction())
-    predictions.append(generate_momentum_prediction())
-    predictions.append(generate_cyclical_prediction())
-    predictions.append(generate_distribution_prediction())
-    predictions.append(generate_pattern_prediction())
+    if player_trend > 0.15:
+        padroes.append({"tipo": "TENDÊNCIA", "lado": "P", "desc": f"Soma Player em alta (slope: {player_trend:.2f})", "peso": 1.5})
+    elif player_trend < -0.15:
+        padroes.append({"tipo": "TENDÊNCIA", "lado": "P", "desc": f"Soma Player em queda (slope: {player_trend:.2f})", "peso": 1.5})
     
-    return [p for p in predictions if p['confidence'] > 30]
-
-def generate_reversion_prediction():
-    results = st.session_state.results
-    if len(results) < 5:
-        return {'type': 'WAIT', 'confidence': 0, 'reason': 'Dados insuficientes', 'algorithm': 'REVERSION'}
-
-    recent = results[:5]
+    if banker_trend > 0.15:
+        padroes.append({"tipo": "TENDÊNCIA", "lado": "B", "desc": f"Soma Banker em alta (slope: {banker_trend:.2f})", "peso": 1.5})
+    elif banker_trend < -0.15:
+        padroes.append({"tipo": "TENDÊNCIA", "lado": "B", "desc": f"Soma Banker em queda (slope: {banker_trend:.2f})", "peso": 1.5})
     
-    if not recent:
-        return {'type': 'WAIT', 'confidence': 0, 'reason': 'Dados insuficientes', 'algorithm': 'REVERSION'}
-
-    last_outcome = recent[0]['outcome']
+    # 2. Padrões de Repetição de Somas
+    player_counts = Counter(df_analise["Player"])
+    banker_counts = Counter(df_analise["Banker"])
     
-    consecutive_count = 0
-    for r in recent:
-        if r['outcome'] == last_outcome:
-            consecutive_count += 1
+    for soma, count in player_counts.items():
+        if count >= max(3, n*0.3):  # Pelo menos 3 ou 30% dos resultados
+            padroes.append({
+                "tipo": "REPETIÇÃO", 
+                "lado": "P", 
+                "desc": f"Soma Player {soma} repetida {count} vezes",
+                "peso": min(2.0, count*0.5)
+            })
+    
+    for soma, count in banker_counts.items():
+        if count >= max(3, n*0.3):
+            padroes.append({
+                "tipo": "REPETIÇÃO", 
+                "lado": "B", 
+                "desc": f"Soma Banker {soma} repetida {count} vezes",
+                "peso": min(2.0, count*0.5)
+            })
+    
+    # 3. Padrões de Resultados (Streaks e Alternâncias)
+    resultados = df_analise["Resultado"].tolist()
+    
+    # Detecção de streaks
+    current_streak = 1
+    last_result = resultados[0]
+    
+    for i in range(1, n):
+        if resultados[i] == last_result and resultados[i] != 'T':
+            current_streak += 1
+        else:
+            if current_streak >= 3:
+                padroes.append({
+                    "tipo": "STREAK", 
+                    "lado": last_result, 
+                    "desc": f"Sequência de {current_streak} vitórias consecutivas",
+                    "peso": min(3.0, current_streak*0.8)
+                })
+            current_streak = 1
+            last_result = resultados[i]
+    
+    # Detecção de alternâncias
+    alternancias = 0
+    for i in range(1, n):
+        if resultados[i] != resultados[i-1] and resultados[i] != 'T' and resultados[i-1] != 'T':
+            alternancias += 1
+    
+    if alternancias/n >= 0.7:  # 70%+ de alternância
+        padroes.append({
+            "tipo": "ALTERNÂNCIA", 
+            "lado": "AMBOS", 
+            "desc": f"Padrão de alternância forte ({alternancias}/{n-1} trocas)",
+            "peso": 2.0
+        })
+    
+    # 4. Análise de Diferenças
+    diferencas = abs(df_analise["Player"] - df_analise["Banker"])
+    diff_media = diferencas.mean()
+    
+    if diff_media < 1.5:
+        padroes.append({
+            "tipo": "PROXIMIDADE", 
+            "lado": "T", 
+            "desc": f"Média de diferença baixa ({diff_media:.2f}) - favorece TIE",
+            "peso": 1.8
+        })
+    
+    # 5. Previsão com Modelo Simples
+    if n > 10:
+        try:
+            X = df_analise[["Player", "Banker"]].values[:-1]
+            y = df_analise["Resultado"].values[1:]
+            
+            # Converter para numérico
+            y_num = [0 if r == 'P' else (1 if r == 'B' else 2) for r in y]
+            
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+            
+            model = LogisticRegression(max_iter=1000)
+            model.fit(X_scaled, y_num)
+            
+            # Prever próximo resultado
+            ultimo = scaler.transform([df_analise[["Player", "Banker"]].values[-1].reshape(1, -1)])
+            pred = model.predict_proba(ultimo)[0]
+            
+            if max(pred) > 0.65:  # Confiança mínima de 65%
+                lado_pred = ["P", "B", "T"][np.argmax(pred)]
+                padroes.append({
+                    "tipo": "PREVISÃO", 
+                    "lado": lado_pred, 
+                    "desc": f"Modelo preditivo sugere {lado_pred} (conf: {max(pred)*100:.1f}%)",
+                    "peso": min(3.0, max(pred)*4)
+                })
+        except Exception as e:
+            st.error(f"Erro no modelo preditivo: {str(e)}")
+    
+    return padroes
+
+# 2. Sistema de Recomendação com Pontuação Hierárquica
+def gerar_recomendacao(padroes):
+    if not padroes:
+        return "AGUARDAR", 10, "Sem padrões detectados. Aguarde mais dados.", "warning"
+    
+    # Agrupar padrões por lado
+    scores = {"P": 0.0, "B": 0.0, "T": 0.0}
+    detalhes = {"P": [], "B": [], "T": []}
+    
+    for padrao in padroes:
+        lado = padrao["lado"]
+        peso = padrao["peso"]
+        
+        if lado in scores:
+            scores[lado] += peso
+            detalhes[lado].append(padrao["desc"])
+        elif lado == "AMBOS":
+            scores["P"] += peso/2
+            scores["B"] += peso/2
+            detalhes["P"].append(padrao["desc"])
+            detalhes["B"].append(padrao["desc"])
+    
+    # Calcular confiança
+    total_score = sum(scores.values())
+    confiancas = {lado: min(100, int(score/total_score * 100)) for lado, score in scores.items()}
+    
+    # Determinar recomendação
+    max_lado = max(scores, key=scores.get)
+    max_score = scores[max_lado]
+    
+    # Limiares de decisão
+    if max_score > 4.0:
+        acao = f"APOSTAR NO {'PLAYER' if max_lado == 'P' else 'BANKER' if max_lado == 'B' else 'TIE'}"
+        tipo = "success"
+        conf = confiancas[max_lado]
+        detalhe = f"**Forte convergência de padrões** ({max_score:.1f} pontos):\n- " + "\n- ".join(detalhes[max_lado])
+    elif max_score > 2.5:
+        acao = f"CONSIDERAR {'PLAYER' if max_lado == 'P' else 'BANKER' if max_lado == 'B' else 'TIE'}"
+        tipo = "warning"
+        conf = confiancas[max_lado]
+        detalhe = f"**Padrões moderados** ({max_score:.1f} pontos):\n- " + "\n- ".join(detalhes[max_lado])
+    else:
+        acao = "AGUARDAR"
+        tipo = "warning"
+        conf = 100 - max(confiancas.values())
+        detalhe = "Padrões fracos ou conflitantes. Aguarde confirmação:\n- " + "\n- ".join(
+            [f"{lado}: {score:.1f} pts" for lado, score in scores.items()])
+    
+    return acao, conf, detalhe, tipo
+
+# --- Painel de Análise ---
+st.markdown("---")
+st.header("🧠 Análise Inteligente de Padrões")
+
+# Analisar dados recentes (últimos 15-20 resultados)
+n_analise = min(20, len(df))
+df_recente = df.tail(n_analise).reset_index(drop=True)
+
+# Detectar padrões
+padroes = detectar_padroes_avancados(df_recente)
+st.session_state.padroes_detectados = padroes
+
+# Gerar recomendação
+acao, confianca, detalhes, tipo = gerar_recomendacao(padroes)
+
+# Exibir recomendação
+st.markdown(f"""
+<div class="stAlert alert-{tipo}">
+    <div style="font-size: 1.5em;">{acao}</div>
+    <div>Confiança: {confianca}%</div>
+    <div style="font-size: 0.9em; margin-top: 10px;">{detalhes}</div>
+</div>
+""", unsafe_allow_html=True)
+
+# --- Estatísticas Detalhadas ---
+st.subheader("📈 Métricas Avançadas")
+
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric("Total de Jogos", len(df))
+with col2:
+    st.metric("Jogos Analisados", n_analise)
+with col3:
+    player_wins = len(df[df['Resultado'] == 'P'])
+    st.metric("Vitórias Player", f"{player_wins} ({player_wins/len(df)*100:.1f}%)")
+with col4:
+    banker_wins = len(df[df['Resultado'] == 'B'])
+    st.metric("Vitórias Banker", f"{banker_wins} ({banker_wins/len(df)*100:.1f}%)")
+
+# --- Visualizações Gráficas ---
+st.subheader("📊 Visualização de Padrões")
+
+# Gráfico 1: Distribuição de Resultados
+fig1 = px.pie(
+    df, 
+    names='Resultado', 
+    title='Distribuição de Resultados',
+    color='Resultado',
+    color_discrete_map={'P': 'blue', 'B': 'red', 'T': 'green'}
+)
+fig1.update_traces(textposition='inside', textinfo='percent+label')
+
+# Gráfico 2: Evolução Temporal
+df['Indice'] = range(1, len(df)+1)
+fig2 = px.line(
+    df.tail(30), 
+    x='Indice', 
+    y=['Player', 'Banker'],
+    title='Evolução das Somas (últimos 30 jogos)',
+    markers=True
+)
+fig2.update_layout(yaxis_title="Soma", xaxis_title="Jogo")
+
+# Gráfico 3: Heatmap de Frequência
+freq_matrix = pd.crosstab(df['Player'], df['Banker'])
+fig3 = px.imshow(
+    freq_matrix,
+    labels=dict(x="Banker", y="Player", color="Frequência"),
+    title="Frequência Player vs Banker",
+    aspect="auto"
+)
+
+# Exibir gráficos
+col_graph1, col_graph2 = st.columns(2)
+with col_graph1:
+    st.plotly_chart(fig1, use_container_width=True)
+with col_graph2:
+    st.plotly_chart(fig2, use_container_width=True)
+st.plotly_chart(fig3, use_container_width=True)
+
+# --- Detalhes dos Padrões Detectados ---
+if padroes:
+    st.subheader("🔍 Padrões Detectados")
+    
+    # Agrupar por tipo de padrão
+    tipos = {}
+    for padrao in padroes:
+        if padrao['tipo'] not in tipos:
+            tipos[padrao['tipo']] = []
+        tipos[padrao['tipo']].append(padrao)
+    
+    # Exibir em abas
+    tabs = st.tabs(list(tipos.keys()))
+    
+    for i, (tipo, padroes_tipo) in enumerate(tipos.items()):
+        with tabs[i]:
+            for padrao in padroes_tipo:
+                st.markdown(f"""
+                <div style="background: #2e2f3a; padding: 15px; border-radius: 10px; margin-bottom: 10px;">
+                    <b>{padrao['lado']}</b> | Peso: {padrao['peso']:.1f}
+                    <div style="margin-top: 5px;">{padrao['desc']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+# --- Sistema de Alertas ---
+st.subheader("🚨 Alertas Estratégicos")
+
+# Verificar condições críticas
+alertas = []
+if len(df) > 10:
+    # Alerta para sequências longas
+    ultimo_resultado = df['Resultado'].iloc[-1]
+    streak_count = 1
+    for i in range(len(df)-2, -1, -1):
+        if df['Resultado'].iloc[i] == ultimo_resultado:
+            streak_count += 1
         else:
             break
-
-    if consecutive_count >= 4:
-        opposite = 'BANKER' if last_outcome == 'PLAYER' else 'PLAYER' if last_outcome == 'BANKER' else 'TIE'
-        confidence = min(85, 45 + (consecutive_count * 10)) 
-        return {
-            'type': opposite,
-            'confidence': confidence,
-            'reason': f'Forte tendência de reversão após {consecutive_count} {last_outcome}s consecutivos.',
-            'algorithm': 'REVERSION'
-        }
-
-    if consecutive_count >= 3:
-        opposite = 'BANKER' if last_outcome == 'PLAYER' else 'PLAYER' if last_outcome == 'BANKER' else 'TIE'
-        return {
-            'type': opposite,
-            'confidence': 60,
-            'reason': f'Provável reversão após {consecutive_count} {last_outcome}s.',
-            'algorithm': 'REVERSION'
-        }
-
-    return {'type': 'WAIT', 'confidence': 25, 'reason': 'Sem padrão de reversão claro', 'algorithm': 'REVERSION'}
-
-def generate_momentum_prediction():
-    momentum = st.session_state.advanced_analysis.get('momentum', {})
-    if not momentum or momentum.get('direction') == 'N/A' or momentum.get('strength', 0) == 0:
-        return {'type': 'WAIT', 'confidence': 0, 'reason': 'Momentum indisponível ou fraco', 'algorithm': 'MOMENTUM'}
     
-    if momentum.get('strength', 0) > 0.4:
-        return {
-            'type': momentum['direction'],
-            'confidence': min(75, 40 + int(momentum['strength'] * 100)),
-            'reason': f'Momento forte para {momentum["direction"]}',
-            'algorithm': 'MOMENTUM'
-        }
-    elif momentum.get('strength', 0) > 0.2:
-        return {
-            'type': momentum['direction'],
-            'confidence': min(60, 30 + int(momentum['strength'] * 100)),
-            'reason': f'Momento moderado para {momentum["direction"]}',
-            'algorithm': 'MOMENTUM'
-        }
-
-    return {
-        'type': 'BALANCED',
-        'confidence': 35,
-        'reason': 'Momento equilibrado',
-        'algorithm': 'MOMENTUM'
-    }
-
-
-def generate_cyclical_prediction():
-    cyclical_trends = st.session_state.advanced_analysis.get('cyclicalTrends', {})
-    cycle5_data = cyclical_trends.get('cycle5', {})
-    predicted_next_phase = cycle5_data.get('predictedNext', {})
+    if streak_count >= 5:
+        alertas.append(f"🚩 Sequência EXTREMA de {streak_count} vitórias consecutivas para {ultimo_resultado}")
+    elif streak_count >= 4:
+        alertas.append(f"⚠️ Sequência longa de {streak_count} vitórias consecutivas para {ultimo_resultado}")
     
-    if not predicted_next_phase or predicted_next_phase.get('strength', 0) <= 0.5:
-        return {
-            'type': 'RANDOM',
-            'confidence': 30,
-            'reason': 'Sem padrão cíclico claro ou fraco',
-            'algorithm': 'CYCLICAL'
-        }
+    # Alerta para empates
+    ultimo_tie_idx = df[df['Resultado'] == 'T'].index
+    desde_ultimo_tie = len(df) - ultimo_tie_idx[-1] if len(ultimo_tie_idx) > 0 else len(df)
     
-    return {
-        'type': predicted_next_phase['dominant'],
-        'confidence': min(70, 30 + int(predicted_next_phase['strength'] * 50)),
-        'reason': f'Padrão cíclico (ciclo 5) indica {predicted_next_phase["dominant"]}',
-        'algorithm': 'CYCLICAL'
-    }
+    if desde_ultimo_tie >= 15:
+        alertas.append("🔥 Ciclo de TIE MADURO - Alta probabilidade de empate")
+    elif desde_ultimo_tie >= 10:
+        alertas.append("🔔 Ciclo de TIE APROXIMANDO - Fique atento")
 
-def generate_distribution_prediction():
-    patterns = st.session_state.advanced_analysis.get('patterns', {})
-    distribution = patterns.get('distribution', {})
-    deviations = distribution.get('deviations', {})
-    stats = st.session_state.current_stats
+# Exibir alertas
+if alertas:
+    for alerta in alertas:
+        st.warning(alerta)
+else:
+    st.info("Nenhum alerta crítico detectado no momento")
+
+# --- Painel de Controle ---
+with st.expander("⚙️ Configurações Avançadas"):
+    st.write("**Otimização de Parâmetros**")
+    analise_range = st.slider("Número de jogos para análise", 5, 50, 20)
+    limiar_confianca = st.slider("Limiar de confiança para apostas", 50, 90, 70)
     
-    if stats['totalGames'] > 10 and deviations.get('player', 0) > 0.2 and \
-       (stats['player'] / stats['totalGames'] < (distribution['expected']['player'] / stats['totalGames'] if stats['totalGames'] > 0 else 0) * 0.8):
-        return {
-            'type': 'PLAYER',
-            'confidence': min(80, 50 + int(deviations['player'] * 100)),
-            'reason': 'Player significativamente abaixo da distribuição esperada',
-            'algorithm': 'DISTRIBUTION'
-        }
+    st.write("**Preferências de Estratégia**")
+    estrategia = st.selectbox("Foco estratégico", [
+        "Padrões de curto prazo", 
+        "Tendências de longo prazo",
+        "Detecção de empates",
+        "Sequências de vitórias"
+    ])
     
-    if stats['totalGames'] > 10 and deviations.get('banker', 0) > 0.2 and \
-       (stats['banker'] / stats['totalGames'] < (distribution['expected']['banker'] / stats['totalGames'] if stats['totalGames'] > 0 else 0) * 0.8):
-        return {
-            'type': 'BANKER',
-            'confidence': min(80, 50 + int(deviations['banker'] * 100)),
-            'reason': 'Banker significativamente abaixo da distribuição esperada',
-            'algorithm': 'DISTRIBUTION'
-        }
-    
-    return {
-        'type': 'BALANCED',
-        'confidence': 40,
-        'reason': 'Distribuição próxima do esperado ou dados insuficientes para desvio significativo',
-        'algorithm': 'DISTRIBUTION'
-    }
+    if st.button("Atualizar Análise"):
+        st.rerun()
 
-def generate_pattern_prediction():
-    patterns = st.session_state.advanced_analysis.get('patterns', {})
-    sequences_analysis = patterns.get('sequences', {})
-    top_sequences = sequences_analysis.get('topSequences', [])
-    
-    if not top_sequences or top_sequences[0]['probability'] <= 0.20:
-        return {
-            'type': 'RANDOM',
-            'confidence': 25,
-            'reason': 'Sem padrão sequencial forte o suficiente',
-            'algorithm': 'PATTERN'
-        }
-    
-    most_frequent_seq = top_sequences[0]['sequence']
-    sequence_parts = most_frequent_seq.split('-')
-    next_expected = sequence_parts[-1]
-
-    return {
-        'type': next_expected,
-        'confidence': min(65, 35 + int(top_sequences[0]['probability'] * 100)),
-        'reason': f'Padrão sequencial comum: "{most_frequent_seq}"',
-        'algorithm': 'PATTERN'
-    }
-
-def calculate_overall_confidence(analysis):
-    results = st.session_state.results
-    if len(results) < 8:
-        return min(40, len(results) * 5)
-
-    predictions = analysis['predictions']
-    if not predictions:
-        return 30
-
-    weights = {
-        'REVERSION': 0.25,
-        'MOMENTUM': 0.20,
-        'CYCLICAL': 0.20,
-        'DISTRIBUTION': 0.20,
-        'PATTERN': 0.15
-    }
-
-    weighted_confidence = 0
-    total_weight = 0
-
-    for pred in predictions:
-        weight = weights.get(pred['algorithm'], 0)
-        weighted_confidence += pred['confidence'] * weight
-        total_weight += weight
-
-    base_confidence = weighted_confidence / total_weight if total_weight > 0 else 30
-    
-    data_quality_multiplier = min(1.2, 0.8 + (len(results) * 0.01))
-    volatility_adjustment = 0.9 if analysis['volatility'] > 70 else 1.1 if analysis['volatility'] < 30 else 1
-
-    confidence = min(95, max(25, base_confidence * data_quality_multiplier * volatility_adjustment))
-    return round(confidence)
-
-def determine_risk_level(analysis):
-    volatility = analysis['volatility']
-    confidence = analysis['confidence']
-
-    if volatility > 75 or confidence < 45:
-        return 'HIGH'
-    if volatility > 55 or confidence < 60:
-        return 'MEDIUM'
-    return 'LOW'
-
-def get_best_recommendation():
-    results = st.session_state.results
-    if len(results) < 3:
-        return {
-            'type': 'AGUARDAR',
-            'reason': 'Coletando dados iniciais para análise...',
-            'confidence': 0,
-            'color': 'gray',
-            'algorithm': 'NONE'
-        }
-
-    predictions = st.session_state.advanced_analysis.get('predictions', [])
-    
-    if not predictions:
-        return {
-            'type': 'PLAYER',
-            'reason': 'Nenhuma previsão forte no momento, recomendação padrão (sem comissão)',
-            'confidence': 50,
-            'color': '#4285F4',
-            'algorithm': 'DEFAULT'
-        }
-
-    consensus_map = {}
-    for pred in predictions:
-        pred_type = pred['type']
-        if pred_type not in ['WAIT', 'RANDOM', 'BALANCED'] and pred['confidence'] > 50:
-            consensus_map[pred_type] = consensus_map.get(pred_type, 0) + pred['confidence']
-
-    if not consensus_map:
-        return {
-            'type': 'AGUARDAR',
-            'reason': 'Sinais conflitantes ou fracos - aguardar melhor oportunidade',
-            'confidence': 35,
-            'color': 'yellow',
-            'algorithm': 'CONSENSUS'
-        }
-
-    best_consensus_type, total_consensus_confidence = max(consensus_map.items(), key=lambda x: x[1])
-    
-    supporting_algos = sum(1 for p in predictions if p['type'] == best_consensus_type and p['confidence'] > 50)
-    avg_confidence = min(95, total_consensus_confidence / supporting_algos) if supporting_algos else 0
-
-    return {
-        'type': best_consensus_type,
-        'reason': f'Consenso de {supporting_algos} algoritmo(s) para {best_consensus_type}',
-        'confidence': round(avg_confidence),
-        'color': '#4285F4' if best_consensus_type == 'PLAYER' else '#EA4335' if best_consensus_type == 'BANKER' else '#34A853' if best_consensus_type == 'TIE' else 'yellow',
-        'algorithm': 'CONSENSUS',
-        'supportingAlgorithms': supporting_algos
-    }
-
-def analyze_patterns():
-    if len(st.session_state.results) < 2:
-        return {}
-    
-    patterns = {
-        'streaks': analyze_streaks(),
-        'alternations': analyze_alternations(),
-        'hotCold': analyze_hot_cold_numbers(),
-        'distribution': analyze_distribution(),
-        'correlations': analyze_correlations(),
-        'sequences': analyze_sequences()
-    }
-    
-    return patterns
-
-def perform_advanced_analysis():
-    if not st.session_state.results:
-        st.session_state.current_stats = {'player':0, 'banker':0, 'tie':0, 'totalGames':0}
-        st.session_state.advanced_analysis = {
-            'patterns': {},
-            'predictions': [],
-            'confidence': 0,
-            'volatility': 0,
-            'momentum': {'direction': 'N/A', 'strength': 0, 'playerMomentum': 0, 'bankerMomentum': 0},
-            'cyclicalTrends': {},
-            'riskLevel': 'LOW'
-        }
-        return
-
-    stats = calculate_basic_stats()
-    st.session_state.current_stats = stats
-
-    analysis = {
-        'patterns': analyze_patterns(),
-        'cyclicalTrends': analyze_cyclical_trends(),
-        'volatility': calculate_volatility(),
-        'momentum': calculate_momentum(),
-        'predictions': generate_predictions(),
-        'confidence': 0,
-        'riskLevel': 'LOW'
-    }
-
-    analysis['confidence'] = calculate_overall_confidence(analysis)
-    analysis['riskLevel'] = determine_risk_level(analysis)
-
-    st.session_state.advanced_analysis = analysis
-
-# Interface do usuário com histórico compacto
-def main():
-    st.set_page_config(layout="wide", page_title="Bac Bo Analyzer PRO")
-
-    # Injeção de CSS e HTML do cabeçalho e histórico usando st.html
-    # Isso garante que o CSS esteja diretamente associado e tenha alta especificidade
-    history_items_html = ""
-    for result in st.session_state.results: 
-        history_items_html += f"""
-        <div class="history-item" style="background-color: {result['color']};">
-            <div class="score-display player-score">{result['player']}</div>
-            <div class="score-display banker-score">{result['banker']}</div>
-        </div>
-        """
-
-    st.html(f"""
-    <style>
-        .recommendation-box {{
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-            margin-bottom: 15px;
-            background-color: #1e2130;
-            border: 2px solid #4a4e69;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }}
-        
-        .history-grid {{
-            display: flex !important; /* Adicionado !important para forçar a aplicação */
-            flex-wrap: wrap !important; /* Adicionado !important para forçar a aplicação */
-            gap: 8px !important;
-            padding: 10px 0 !important;
-            justify-content: flex-start !important;
-            width: 100% !important;
-        }}
-        .history-item {{
-            width: calc((100% / 6) - 8px) !important; 
-            min-width: 50px !important; 
-            max-width: 60px !important; 
-            height: 60px !important;
-            border-radius: 8px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            font-size: 1.1em;
-            font-weight: bold;
-            color: white;
-            padding: 2px;
-            box-sizing: border-box;
-            flex-shrink: 0;
-        }}
-        .score-display {{
-            font-size: 0.9em;
-            line-height: 1.2;
-        }}
-        .player-score {{
-            color: white;
-        }}
-        .banker-score {{
-            color: white;
-        }}
-        .header-section {{
-            background-color: #1e2130;
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-        }}
-        .header-section h3 {{
-            margin: 0;
-            color: #fff;
-            margin-left: 10px;
-        }}
-        /* Estilos específicos para o Streamlit (input, buttons, metrics) */
-        /* Esses estilos são menos críticos para o layout do histórico, mas mantidos para a aparência geral */
-        .stButton>button {{
-            width: 100%;
-            border-radius: 8px;
-            height: 50px;
-            font-size: 1.1em;
-            font-weight: bold;
-        }}
-        .stTextInput>div>div>input {{
-            border-radius: 8px;
-            height: 50px;
-            font-size: 1.1em;
-            text-align: center;
-        }}
-        .stMetric {{
-            background-color: #1e2130;
-            border-radius: 8px;
-            padding: 10px;
-            text-align: center;
-            color: #fff;
-            border: 1px solid #4a4e69;
-        }}
-        .stMetric > div > div > div > div > div {{
-            color: #fff !important;
-        }}
-        .stMetric > div > div > div {{
-            color: #fff !important;
-        }}
-        .stProgress > div > div > div > div {{
-            background-color: #4CAF50;
-        }}
-        h1, h2, h3, h4, h5, h6 {{
-            color: #fff;
-        }}
-        p {{
-            color: #ccc;
-        }}
-        .stAlert {{
-            border-radius: 8px;
-        }}
-    </style>
-
-    <div class="header-section">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-bar-chart-2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
-        <h3>Historico de Resultados</h3>
-    </div>
-    <div class="history-grid">
-        {history_items_html}
-    </div>
-    """)
-
-    st.markdown("---")
-
-    # Input for new results
-    st.header("Adicionar Novo Resultado")
-    col1, col2 = st.columns(2)
-    with col1:
-        player_input = st.text_input("Pontuação do Player", key="player_score_input")
-    with col2:
-        banker_input = st.text_input("Pontuação do Banker", key="banker_score_input")
-
-    if st.button("Adicionar Resultado"):
-        if player_input and banker_input:
-            add_result(player_input, banker_input)
-            st.rerun()
-        else:
-            st.error("Por favor, preencha ambas as pontuações.")
-
-    st.markdown("---")
-
-    # Current Statistics
-    st.header("Estatísticas Atuais")
-    stats = st.session_state.current_stats
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric(label="Total de Jogos", value=stats['totalGames'])
-    with col2:
-        st.metric(label="Player", value=f"{stats['player']} ({stats['player']/stats['totalGames']*100:.1f}%)" if stats['totalGames'] > 0 else "0 (0%)")
-    with col3:
-        st.metric(label="Banker", value=f"{stats['banker']} ({stats['banker']/stats['totalGames']*100:.1f}%)" if stats['totalGames'] > 0 else "0 (0%)")
-    with col4:
-        st.metric(label="Tie", value=f"{stats['tie']} ({stats['tie']/stats['totalGames']*100:.1f}%)" if stats['totalGames'] > 0 else "0 (0%)")
-
-    st.markdown("---")
-
-    # Recommendation
-    st.header("Recomendação Inteligente")
-    recommendation = get_best_recommendation()
-    st.markdown(f"""
-    <div class="recommendation-box" style="background-color: {recommendation['color']};">
-        <h4>Ação Recomendada: {recommendation['type']}</h4>
-        <p>{recommendation['reason']}</p>
-        <p>Confiança: {recommendation['confidence']}%</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Advanced Analysis Details
-    st.markdown("---")
-    st.header("Análise Avançada")
-    analysis = st.session_state.advanced_analysis
-
-    if analysis and st.session_state.results:
-        st.subheader("Padrões e Tendências")
-        # --- INÍCIO DA CORREÇÃO PARA EXIBIÇÃO LEGÍVEL DOS PADRÕES ---
-        patterns = analysis['patterns']
-
-        if patterns:
-            st.markdown("#### Sequências de Vitórias/Derrotas (Streaks)")
-            if patterns['streaks']['maxStreaks']:
-                st.write(f"- **Máximas:** Player: {patterns['streaks']['maxStreaks']['player']}, Banker: {patterns['streaks']['maxStreaks']['banker']}, Tie: {patterns['streaks']['maxStreaks']['tie']}")
-            if patterns['streaks']['avgStreaks']:
-                st.write(f"- **Médias:** Player: {patterns['streaks']['avgStreaks']['player']:.2f}, Banker: {patterns['streaks']['avgStreaks']['banker']:.2f}, Tie: {patterns['streaks']['avgStreaks']['tie']:.2f}")
-            if patterns['streaks']['currentStreak']:
-                st.write(f"- **Atual:** {patterns['streaks']['currentStreak']['type']} por {patterns['streaks']['currentStreak']['count']} rodada(s)")
-
-            st.markdown("#### Alternância")
-            if patterns['alternations']:
-                st.write(f"- Taxa de Alternância: {patterns['alternations']['rate']:.2f} (Padrão: {patterns['alternations']['pattern']})")
-                st.write(f"- Alternâncias: {patterns['alternations']['alternations']}, Consecutivos: {patterns['alternations']['consecutives']}")
-            
-            st.markdown("#### Números Quentes/Frios")
-            if patterns['hotCold']['player']['hot']:
-                st.write(f"- **Player Quentes:** {', '.join([f'{item['num']} ({item['count']})' for item in patterns['hotCold']['player']['hot']])}")
-            if patterns['hotCold']['player']['cold']:
-                st.write(f"- **Player Frios:** {', '.join([f'{item['num']} ({item['count']})' for item in patterns['hotCold']['player']['cold']])}")
-            if patterns['hotCold']['banker']['hot']:
-                st.write(f"- **Banker Quentes:** {', '.join([f'{item['num']} ({item['count']})' for item in patterns['hotCold']['banker']['hot']])}")
-            if patterns['hotCold']['banker']['cold']:
-                st.write(f"- **Banker Frios:** {', '.join([f'{item['num']} ({item['count']})' for item in patterns['hotCold']['banker']['cold']])}")
-
-            st.markdown("#### Distribuição vs. Expectativa Teórica")
-            if patterns['distribution']:
-                st.write(f"- Desvio Player: {patterns['distribution']['deviations']['player']:.2f}, Banker: {patterns['distribution']['deviations']['banker']:.2f}, Tie: {patterns['distribution']['deviations']['tie']:.2f}")
-                st.write(f"- Esperado: Player: {patterns['distribution']['expected']['player']:.2f}, Banker: {patterns['distribution']['expected']['banker']:.2f}, Tie: {patterns['distribution']['expected']['tie']:.2f}")
-
-            st.markdown("#### Correlações")
-            if patterns['correlations']:
-                st.write(f"- Correlação Player: {patterns['correlations']['playerNumberCorrelation']:.2f}")
-                st.write(f"- Correlação Banker: {patterns['correlations']['bankerNumberCorrelation']:.2f}")
-                st.write(f"- Correlação de Resultado (Lag 3): {patterns['correlations']['outcomeCorrelation']:.2f}")
-
-            st.markdown("#### Sequências Mais Frequentes")
-            if patterns['sequences']['topSequences']:
-                for seq_item in patterns['sequences']['topSequences']:
-                    st.write(f"- **{seq_item['sequence']}** (ocorrências: {seq_item['count']}, prob: {seq_item['probability']:.2%})")
-            else:
-                st.info("Adicione mais resultados para analisar sequências.")
-        else:
-            st.info("Adicione resultados para analisar padrões e tendências.")
-        # --- FIM DA CORREÇÃO PARA EXIBIÇÃO LEGÍVEL DOS PADRÕES ---
-
-        st.subheader("Tendências Cíclicas")
-        st.json(analysis['cyclicalTrends']) # Mantido JSON para esta seção, se desejar.
-
-        st.subheader("Volatilidade e Momento")
-        col_v, col_m = st.columns(2)
-        with col_v:
-            st.metric("Volatilidade do Jogo", f"{analysis['volatility']}%")
-        with col_m:
-            momentum_dir = analysis['momentum'].get('direction', 'N/A')
-            momentum_str = analysis['momentum'].get('strength', 0)
-            st.metric("Momento Atual", f"{momentum_dir} (Força: {momentum_str:.2f})")
-        
-        st.subheader("Nível de Risco")
-        risk_color = "green" if analysis['riskLevel'] == 'LOW' else "orange" if analysis['riskLevel'] == 'MEDIUM' else "red"
-        st.markdown(f"<p style='color:{risk_color}; font-weight:bold;'>Risco: {analysis['riskLevel']}</p>", unsafe_allow_html=True)
-
-        st.subheader("Previsões por Algoritmo")
-        for pred in analysis['predictions']:
-            st.write(f"**Algoritmo:** {pred['algorithm']} - **Previsão:** {pred['type']} - **Confiança:** {pred['confidence']}% - **Razão:** {pred['reason']}")
-    elif not st.session_state.results:
-        st.info("Adicione resultados para ver a análise avançada.")
-
-if __name__ == '__main__':
-    main()
+st.markdown("---")
+st.info("⚠️ **Aviso Importante**: Este sistema é uma ferramenta analítica. Jogos envolvem risco e resultados podem variar.")
