@@ -61,14 +61,15 @@ def sugestao(h):
         return "🔄 Eco visual — repetir padrão anterior"
     return "⏳ Aguardar novo padrão"
 
-def formatar_resultado(r):
+# 🔵🔴🟠 Visualização com bolhas coloridas (sem letras)
+def bolha_cor(r):
     return {
-        "C": "🔴 C",
-        "V": "🔵 V",
-        "E": "🟠 E"
-    }.get(r, r)
+        "C": "🟥",  # Casa
+        "V": "🟦",  # Visitante
+        "E": "🟨",  # Empate
+    }.get(r, "⬜")
 
-# 🎯 Interface do app
+# 🎯 Interface Streamlit
 st.set_page_config(page_title="Football Studio Análise", layout="wide")
 st.title("🎲 Football Studio Live - Análise Inteligente")
 
@@ -80,18 +81,18 @@ if col3.button("➕ Empate (E)"): adicionar_resultado("E")
 
 h = st.session_state.historico
 
-# 🧾 Histórico visual com quebras a cada 9
-st.subheader("🧾 Histórico (em blocos de 9)")
+# 🧾 Histórico visual com quebras a cada 9 (sem letras)
+st.subheader("🧾 Histórico em blocos de 9 (visual estilo bolha)")
 for i in range(0, len(h), 9):
-    linha_formatada = " | ".join(formatar_resultado(r) for r in h[i:i+9])
-    st.markdown(f"`{linha_formatada}`")
+    linha_bolhas = " ".join(bolha_cor(r) for r in h[i:i+9])
+    st.markdown(f"<div style='font-size: 32px;'>{linha_bolhas}</div>", unsafe_allow_html=True)
 
 # 📊 Painel de análise
 st.subheader("📈 Análise Preditiva")
 col1, col2, col3 = st.columns(3)
-col1.metric("Total 🔴 Casa", h.count('C'))
-col2.metric("Total 🔵 Visitante", h.count('V'))
-col3.metric("Total 🟠 Empates", h.count('E'))
+col1.metric("Total Casa", h.count('C'))
+col2.metric("Total Visitante", h.count('V'))
+col3.metric("Total Empates", h.count('E'))
 
 st.write(f"Maior sequência: **{maior_sequencia(h)}**")
 st.write(f"Alternância total: **{alternancia(h)}**")
@@ -101,23 +102,20 @@ st.write(f"Blocos espelhados detectados: **{blocos_espelhados(h)}**")
 st.write(f"Alternância por linha: **{alternancia_por_linha(h)}**")
 st.write(f"Tendência final: **{tendencia_final(h)}**")
 
-# 🎯 Sugestão preditiva
-st.subheader("🔮 Sugestão de entrada")
+# 🔮 Sugestão preditiva
+st.subheader("🎯 Sugestão de entrada")
 st.success(sugestao(h))
 
-# 🚨 Alerta automático de padrão
-st.subheader("🚨 Alerta estratégico")
+# 🚨 Alerta estratégico
+st.subheader("🚨 Alerta automático de padrão")
 alertas = []
 
 if maior_sequencia(h) >= 5:
     alertas.append("🟥 Sequência longa detectada — possível inversão")
-
 if eco_visual(h) == "Detectado":
     alertas.append("🔁 Eco visual identificado — padrão pode se repetir")
-
 if dist_empates(h) == 1:
     alertas.append("🟠 Empates consecutivos — momento instável")
-
 if blocos_espelhados(h) >= 1:
     alertas.append("🧩 Bloco espelhado — comportamento reflexivo")
 
@@ -127,7 +125,7 @@ else:
     for alerta in alertas:
         st.warning(alerta)
 
-# 🧹 Reset
+# 🧹 Botão para limpar
 if st.button("🧹 Limpar histórico"):
     st.session_state.historico = []
     st.rerun()
