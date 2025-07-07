@@ -1,6 +1,6 @@
 import streamlit as st
 
-# 🔄 Histórico com até 54 posições
+# 🔁 Histórico de até 54 posições
 if "historico" not in st.session_state:
     st.session_state.historico = []
 
@@ -61,34 +61,40 @@ def sugestao(h):
         return "🔄 Eco visual — repetir padrão anterior"
     return "⏳ Aguardar novo padrão"
 
-# 🔵🔴🟠 Visualização com bolhas coloridas (sem letras)
+# 🔴🟦🟨 Bolha visual sem letras
 def bolha_cor(r):
     return {
-        "C": "🟥",  # Casa
-        "V": "🟦",  # Visitante
-        "E": "🟨",  # Empate
+        "C": "🟥",
+        "V": "🟦",
+        "E": "🟨"
     }.get(r, "⬜")
 
 # 🎯 Interface Streamlit
 st.set_page_config(page_title="Football Studio Análise", layout="wide")
-st.title("🎲 Football Studio Live - Análise Inteligente")
+st.title("🎲 Football Studio Live – Análise Inteligente")
 
-st.write("Insira os resultados conforme forem aparecendo no jogo:")
+# Entrada manual
+st.write("Selecione o resultado:")
 col1, col2, col3 = st.columns(3)
-if col1.button("➕ Casa (C)"): adicionar_resultado("C")
-if col2.button("➕ Visitante (V)"): adicionar_resultado("V")
-if col3.button("➕ Empate (E)"): adicionar_resultado("E")
+if col1.button("➕ Casa (C)"):
+    adicionar_resultado("C")
+if col2.button("➕ Visitante (V)"):
+    adicionar_resultado("V")
+if col3.button("➕ Empate (E)"):
+    adicionar_resultado("E")
 
 h = st.session_state.historico
 
-# 🧾 Histórico visual com quebras a cada 9 (sem letras)
-st.subheader("🧾 Histórico em blocos de 9 (visual estilo bolha)")
-for i in range(0, len(h), 9):
-    linha_bolhas = " ".join(bolha_cor(r) for r in h[i:i+9])
-    st.markdown(f"<div style='font-size: 32px;'>{linha_bolhas}</div>", unsafe_allow_html=True)
+# 🧾 Histórico visual invertido com blocos de 9
+st.subheader("🧾 Histórico visual (recente → antigo)")
+h_reverso = h[::-1]
+linhas = [h_reverso[i:i+9] for i in range(0, len(h_reverso), 9)]
+for linha in linhas:
+    bolhas = " ".join(bolha_cor(r) for r in linha)
+    st.markdown(f"<div style='font-size: 32px;'>{bolhas}</div>", unsafe_allow_html=True)
 
-# 📊 Painel de análise
-st.subheader("📈 Análise Preditiva")
+# 📈 Painel de análise
+st.subheader("📊 Análise Preditiva")
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Casa", h.count('C'))
 col2.metric("Total Visitante", h.count('V'))
@@ -106,10 +112,9 @@ st.write(f"Tendência final: **{tendencia_final(h)}**")
 st.subheader("🎯 Sugestão de entrada")
 st.success(sugestao(h))
 
-# 🚨 Alerta estratégico
-st.subheader("🚨 Alerta automático de padrão")
+# 🚨 Alertas automáticos
+st.subheader("🚨 Alerta de padrão")
 alertas = []
-
 if maior_sequencia(h) >= 5:
     alertas.append("🟥 Sequência longa detectada — possível inversão")
 if eco_visual(h) == "Detectado":
@@ -120,12 +125,12 @@ if blocos_espelhados(h) >= 1:
     alertas.append("🧩 Bloco espelhado — comportamento reflexivo")
 
 if not alertas:
-    st.info("Nenhum padrão crítico detectado no momento.")
+    st.info("Nenhum padrão crítico no momento.")
 else:
     for alerta in alertas:
         st.warning(alerta)
 
-# 🧹 Botão para limpar
+# 🧹 Limpar histórico
 if st.button("🧹 Limpar histórico"):
     st.session_state.historico = []
     st.rerun()
