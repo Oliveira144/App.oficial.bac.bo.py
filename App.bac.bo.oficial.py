@@ -61,7 +61,7 @@ def sugestao(h):
         return "🔄 Eco visual — padrão pode se repetir"
     return "⏳ Aguardando padrão mais claro"
 
-# 🔵🔴🟨 Bolhas visuais
+# 🔴🟦🟨 Bolhas visuais
 def bolha_cor(r):
     return {
         "C": "🟥",
@@ -83,6 +83,10 @@ if col3.button("➕ Empate (E)"):
     adicionar_resultado("E")
 
 h = st.session_state.historico
+
+# 🔮 Sugestão posicionada acima do histórico
+st.subheader("🎯 Sugestão de entrada")
+st.success(sugestao(h))
 
 # 🧾 Histórico visual (mais recente → antigo), bolhas menores
 st.subheader("🧾 Histórico visual (9 por linha, mais recente à esquerda)")
@@ -111,10 +115,6 @@ st.write(f"Blocos espelhados detectados: **{blocos_espelhados(h)}**")
 st.write(f"Alternância por linha: **{alternancia_por_linha(h)}**")
 st.write(f"Tendência final: **{tendencia_final(h)}**")
 
-# 🎯 Sugestão inteligente
-st.subheader("🎯 Sugestão de entrada")
-st.success(sugestao(h))
-
 # 🚨 Alertas automáticos
 st.subheader("🚨 Alerta estratégico")
 alertas = []
@@ -133,7 +133,7 @@ else:
     for alerta in alertas:
         st.warning(alerta)
 
-# 🧹 Reset
+# 🧹 Botão para limpar
 if st.button("🧹 Limpar histórico"):
     st.session_state.historico = []
     st.rerun()
