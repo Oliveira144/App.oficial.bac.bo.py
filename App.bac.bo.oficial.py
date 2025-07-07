@@ -1,10 +1,10 @@
 import streamlit as st
 
-# 🔄 Histórico com 54 posições
+# 🔄 Histórico com até 54 posições
 if "historico" not in st.session_state:
     st.session_state.historico = []
 
-# 🧠 Funções de análise
+# 📌 Funções de análise
 def adicionar_resultado(valor):
     st.session_state.historico.append(valor)
     if len(st.session_state.historico) > 54:
@@ -40,7 +40,7 @@ def blocos_espelhados(h):
     return cont
 
 def alternancia_por_linha(h):
-    linhas = [h[i:i+18] for i in range(0, len(h), 18)]
+    linhas = [h[i:i+9] for i in range(0, len(h), 9)]
     return [sum(1 for j in range(1, len(linha)) if linha[j] != linha[j-1]) for linha in linhas]
 
 def tendencia_final(h):
@@ -61,7 +61,14 @@ def sugestao(h):
         return "🔄 Eco visual — repetir padrão anterior"
     return "⏳ Aguardar novo padrão"
 
-# 🌐 Interface Streamlit
+def formatar_resultado(r):
+    return {
+        "C": "🔴 C",
+        "V": "🔵 V",
+        "E": "🟠 E"
+    }.get(r, r)
+
+# 🎯 Interface do app
 st.set_page_config(page_title="Football Studio Análise", layout="wide")
 st.title("🎲 Football Studio Live - Análise Inteligente")
 
@@ -71,35 +78,56 @@ if col1.button("➕ Casa (C)"): adicionar_resultado("C")
 if col2.button("➕ Visitante (V)"): adicionar_resultado("V")
 if col3.button("➕ Empate (E)"): adicionar_resultado("E")
 
-st.markdown("---")
 h = st.session_state.historico
 
-# 🧾 Histórico visual estilo matriz
-st.subheader("🧾 Histórico (54 posições)")
-for i in range(0, len(h), 18):
-    linha = " | ".join(h[i:i+18])
-    st.code(linha)
+# 🧾 Histórico visual com quebras a cada 9
+st.subheader("🧾 Histórico (em blocos de 9)")
+for i in range(0, len(h), 9):
+    linha_formatada = " | ".join(formatar_resultado(r) for r in h[i:i+9])
+    st.markdown(f"`{linha_formatada}`")
 
-# 🔍 Análises
+# 📊 Painel de análise
 st.subheader("📈 Análise Preditiva")
 col1, col2, col3 = st.columns(3)
-col1.metric("Total C", h.count('C'))
-col2.metric("Total V", h.count('V'))
-col3.metric("Total E", h.count('E'))
+col1.metric("Total 🔴 Casa", h.count('C'))
+col2.metric("Total 🔵 Visitante", h.count('V'))
+col3.metric("Total 🟠 Empates", h.count('E'))
 
-st.write(f"Maior sequência: {maior_sequencia(h)}")
-st.write(f"Alternância total: {alternancia(h)}")
-st.write(f"Eco visual: {eco_visual(h)}")
-st.write(f"Distância entre últimos empates: {dist_empates(h)}")
-st.write(f"Blocos espelhados detectados: {blocos_espelhados(h)}")
-st.write(f"Alternância por linha: {alternancia_por_linha(h)}")
-st.write(f"Tendência final: {tendencia_final(h)}")
+st.write(f"Maior sequência: **{maior_sequencia(h)}**")
+st.write(f"Alternância total: **{alternancia(h)}**")
+st.write(f"Eco visual: **{eco_visual(h)}**")
+st.write(f"Distância entre últimos empates: **{dist_empates(h)}**")
+st.write(f"Blocos espelhados detectados: **{blocos_espelhados(h)}**")
+st.write(f"Alternância por linha: **{alternancia_por_linha(h)}**")
+st.write(f"Tendência final: **{tendencia_final(h)}**")
 
-# 🔮 Sugestão de jogada
-st.subheader("🎯 Sugestão de entrada")
+# 🎯 Sugestão preditiva
+st.subheader("🔮 Sugestão de entrada")
 st.success(sugestao(h))
 
-# 🧹 Reset (opcional)
+# 🚨 Alerta automático de padrão
+st.subheader("🚨 Alerta estratégico")
+alertas = []
+
+if maior_sequencia(h) >= 5:
+    alertas.append("🟥 Sequência longa detectada — possível inversão")
+
+if eco_visual(h) == "Detectado":
+    alertas.append("🔁 Eco visual identificado — padrão pode se repetir")
+
+if dist_empates(h) == 1:
+    alertas.append("🟠 Empates consecutivos — momento instável")
+
+if blocos_espelhados(h) >= 1:
+    alertas.append("🧩 Bloco espelhado — comportamento reflexivo")
+
+if not alertas:
+    st.info("Nenhum padrão crítico detectado no momento.")
+else:
+    for alerta in alertas:
+        st.warning(alerta)
+
+# 🧹 Reset
 if st.button("🧹 Limpar histórico"):
     st.session_state.historico = []
     st.rerun()
