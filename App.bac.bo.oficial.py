@@ -1,6 +1,6 @@
 import streamlit as st
 
-# 🔁 Histórico de até 54 posições
+# 🔁 Histórico com limite de 54 entradas
 if "historico" not in st.session_state:
     st.session_state.historico = []
 
@@ -13,7 +13,7 @@ def adicionar_resultado(valor):
 def maior_sequencia(h):
     max_seq = atual = 1
     for i in range(1, len(h)):
-        if h[i] == h[i-1]:
+        if h[i] == h[i - 1]:
             atual += 1
             max_seq = max(max_seq, atual)
         else:
@@ -21,7 +21,7 @@ def maior_sequencia(h):
     return max_seq
 
 def alternancia(h):
-    return sum(1 for i in range(1, len(h)) if h[i] != h[i-1])
+    return sum(1 for i in range(1, len(h)) if h[i] != h[i - 1])
 
 def eco_visual(h):
     if len(h) < 12:
@@ -35,13 +35,13 @@ def dist_empates(h):
 def blocos_espelhados(h):
     cont = 0
     for i in range(len(h) - 5):
-        if h[i:i+3] == h[i+3:i+6][::-1]:
+        if h[i:i + 3] == h[i + 3:i + 6][::-1]:
             cont += 1
     return cont
 
 def alternancia_por_linha(h):
-    linhas = [h[i:i+9] for i in range(0, len(h), 9)]
-    return [sum(1 for j in range(1, len(linha)) if linha[j] != linha[j-1]) for linha in linhas]
+    linhas = [h[i:i + 9] for i in range(0, len(h), 9)]
+    return [sum(1 for j in range(1, len(linha)) if linha[j] != linha[j - 1]) for linha in linhas]
 
 def tendencia_final(h):
     ult = h[-5:]
@@ -56,12 +56,12 @@ def sugestao(h):
     if seq >= 5:
         return "🔁 Sequência longa — possível inversão"
     if ult == 'E':
-        return "🟡 Empate recente — próxima rodada pode ser C ou V"
+        return "🟡 Empate recente — pode vir C ou V"
     if eco == "Detectado":
-        return "🔄 Eco visual — repetir padrão anterior"
-    return "⏳ Aguardar novo padrão"
+        return "🔄 Eco visual — padrão pode se repetir"
+    return "⏳ Aguardando padrão mais claro"
 
-# 🔴🟦🟨 Bolha visual sem letras
+# 🔵🔴🟨 Bolhas visuais
 def bolha_cor(r):
     return {
         "C": "🟥",
@@ -69,12 +69,11 @@ def bolha_cor(r):
         "E": "🟨"
     }.get(r, "⬜")
 
-# 🎯 Interface Streamlit
-st.set_page_config(page_title="Football Studio Análise", layout="wide")
-st.title("🎲 Football Studio Live – Análise Inteligente")
+# 🧠 Interface principal
+st.set_page_config(page_title="Football Studio – Análise", layout="wide")
+st.title("🎲 Football Studio Live — Leitura de Padrões")
 
-# Entrada manual
-st.write("Selecione o resultado:")
+st.write("Adicione os resultados da rodada:")
 col1, col2, col3 = st.columns(3)
 if col1.button("➕ Casa (C)"):
     adicionar_resultado("C")
@@ -85,15 +84,19 @@ if col3.button("➕ Empate (E)"):
 
 h = st.session_state.historico
 
-# 🧾 Histórico visual invertido com blocos de 9
-st.subheader("🧾 Histórico visual (recente → antigo)")
+# 🧾 Histórico visual (mais recente → antigo), bolhas menores
+st.subheader("🧾 Histórico visual (9 por linha, mais recente à esquerda)")
 h_reverso = h[::-1]
-linhas = [h_reverso[i:i+9] for i in range(0, len(h_reverso), 9)]
-for linha in linhas:
-    bolhas = " ".join(bolha_cor(r) for r in linha)
-    st.markdown(f"<div style='font-size: 32px;'>{bolhas}</div>", unsafe_allow_html=True)
+linhas = [h_reverso[i:i + 9] for i in range(0, len(h_reverso), 9)]
 
-# 📈 Painel de análise
+for linha in linhas:
+    bolhas = "".join(
+        f"<span style='font-size:24px; margin-right:4px;'>{bolha_cor(r)}</span>"
+        for r in linha
+    )
+    st.markdown(f"<div style='display:flex; gap:4px;'>{bolhas}</div>", unsafe_allow_html=True)
+
+# 📊 Painel de análise
 st.subheader("📊 Análise Preditiva")
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Casa", h.count('C'))
@@ -108,12 +111,12 @@ st.write(f"Blocos espelhados detectados: **{blocos_espelhados(h)}**")
 st.write(f"Alternância por linha: **{alternancia_por_linha(h)}**")
 st.write(f"Tendência final: **{tendencia_final(h)}**")
 
-# 🔮 Sugestão preditiva
+# 🎯 Sugestão inteligente
 st.subheader("🎯 Sugestão de entrada")
 st.success(sugestao(h))
 
 # 🚨 Alertas automáticos
-st.subheader("🚨 Alerta de padrão")
+st.subheader("🚨 Alerta estratégico")
 alertas = []
 if maior_sequencia(h) >= 5:
     alertas.append("🟥 Sequência longa detectada — possível inversão")
@@ -130,7 +133,7 @@ else:
     for alerta in alertas:
         st.warning(alerta)
 
-# 🧹 Limpar histórico
+# 🧹 Reset
 if st.button("🧹 Limpar histórico"):
     st.session_state.historico = []
     st.rerun()
