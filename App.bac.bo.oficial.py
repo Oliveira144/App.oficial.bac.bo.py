@@ -178,4 +178,4 @@ else:
 # Limpar
 if st.button("🧹 Limpar histórico"):
     st.session_state.historico = []
-    st.rerun()
+    st.rerun(
