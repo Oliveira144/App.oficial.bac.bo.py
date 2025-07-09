@@ -1,181 +1,159 @@
 import streamlit as st
+from collections import Counter
 
-# Histórico com limite geral
+# Inicializa histórico
 if "historico" not in st.session_state:
     st.session_state.historico = []
 
-def adicionar_resultado(valor):
-    st.session_state.historico.append(valor)
+# Funções de lógica
+def cores_opostas(c1, c2):
+    return (c1 == "🔴" and c2 == "🔵") or (c1 == "🔵" and c2 == "🔴")
 
-# 🔍 Funções analíticas usando os últimos 27 válidos
-def get_valores(h):
-    return [r for r in h if r in ["C", "V", "E"]][-27:]
+def padrao_reescrito(linha1, linha2):
+    if len(linha1) != len(linha2):
+        return False
+    for a, b in zip(linha1, linha2):
+        if a == "🟡" or b == "🟡":
+            continue
+        if not cores_opostas(a, b):
+            return False
+    return True
 
-def maior_sequencia(h):
-    h = get_valores(h)
-    max_seq = atual = 1
-    for i in range(1, len(h)):
-        if h[i] == h[i - 1]:
-            atual += 1
-            max_seq = max(max_seq, atual)
-        else:
-            atual = 1
-    return max_seq
+def colunas_semelhantes(c1, c2):
+    for a, b in zip(c1, c2):
+        if a == "🟡" or b == "🟡":
+            continue
+        if not cores_opostas(a, b):
+            return False
+    return True
 
-def sequencia_final(h):
-    h = get_valores(h)
-    if not h:
-        return 0
-    atual = h[-1]
-    count = 1
-    for i in range(len(h) - 2, -1, -1):
-        if h[i] == atual:
-            count += 1
-        else:
-            break
-    return count
+def inserir(cor):
+    st.session_state.historico.insert(0, cor)
 
-def alternancia(h):
-    h = get_valores(h)
-    return sum(1 for i in range(1, len(h)) if h[i] != h[i - 1])
+def desfazer():
+    if st.session_state.historico:
+        st.session_state.historico.pop(0)
 
-def eco_visual(h):
-    h = get_valores(h)
-    if len(h) < 12:
-        return "Poucos dados"
-    return "Detectado" if h[-6:] == h[-12:-6] else "Não houve"
+def limpar():
+    st.session_state.historico.clear()
 
-def eco_parcial(h):
-    h = get_valores(h)
-    if len(h) < 12:
-        return "Poucos dados"
-    anterior = h[-12:-6]
-    atual = h[-6:]
-    semelhantes = sum(1 for a, b in zip(anterior, atual) if a == b or (a in ['C', 'V'] and b in ['C', 'V']))
-    return f"{semelhantes}/6 semelhantes"
+# Configuração visual
+st.set_page_config(page_title="FS Análise Pro", layout="centered")
 
-def dist_empates(h):
-    h = get_valores(h)
-    empates = [i for i, r in enumerate(h) if r == 'E']
-    return empates[-1] - empates[-2] if len(empates) >= 2 else "N/A"
+st.title("📊 FS Análise Pro")
+st.caption("Detecção de padrões reescritos e sugestões inteligentes para o jogo Football Studio Live")
 
-def blocos_espelhados(h):
-    h = get_valores(h)
-    cont = 0
-    for i in range(len(h) - 5):
-        if h[i:i + 3] == h[i + 3:i + 6][::-1]:
-            cont += 1
-    return cont
-
-def alternancia_por_linha(h):
-    h = get_valores(h)
-    linhas = [h[i:i + 9] for i in range(0, len(h), 9)]
-    return [sum(1 for j in range(1, len(linha)) if linha[j] != linha[j - 1]) for linha in linhas]
-
-def tendencia_final(h):
-    h = get_valores(h)
-    ult = h[-5:]
-    return f"{ult.count('C')}C / {ult.count('V')}V / {ult.count('E')}E"
-
-def bolha_cor(r):
-    return {
-        "C": "🟥",
-        "V": "🟦",
-        "E": "🟨",
-        "🔽": "⬇️"
-    }.get(r, "⬜")
-
-def sugestao(h):
-    valores = get_valores(h)
-    if not valores:
-        return "Insira resultados para gerar previsão."
-    ult = valores[-1]
-    seq = sequencia_final(h)
-    eco = eco_visual(h)
-    parcial = eco_parcial(h)
-    contagens = {
-        "C": valores.count("C"),
-        "V": valores.count("V"),
-        "E": valores.count("E")
-    }
-
-    if seq >= 5 and ult in ["C", "V"]:
-        cor_inversa = "V" if ult == "C" else "C"
-        return f"🔁 Sequência atual de {bolha_cor(ult)} — possível reversão para {bolha_cor(cor_inversa)}"
-    if ult == "E":
-        return "🟨 Empate recente — instável, possível 🟥 ou 🟦"
-    if eco == "Detectado" or parcial.startswith(("5", "6")):
-        return f"🔄 Reescrita visual — repetir padrão com {bolha_cor(ult)}"
-    maior = max(contagens, key=contagens.get)
-    return f"📊 Tendência favorece entrada em {bolha_cor(maior)} ({maior})"
-
-# Interface
-st.set_page_config(page_title="Football Studio – Análise", layout="wide")
-st.title("🎲 Football Studio Live — Leitura Estratégica")
-
-# Entrada
-col1, col2, col3, col4 = st.columns(4)
-if col1.button("➕ Casa (C)"): adicionar_resultado("C")
-if col2.button("➕ Visitante (V)"): adicionar_resultado("V")
-if col3.button("➕ Empate (E)"): adicionar_resultado("E")
-if col4.button("🗂️ Novo baralho"): adicionar_resultado("🔽")
-
-h = st.session_state.historico
-
-# Sugestão preditiva
-st.subheader("🎯 Sugestão de entrada")
-st.success(sugestao(h))
-
-# Histórico visual com destaque até 3 linhas (27 bolhas)
-st.subheader("🧾 Histórico visual (zona ativa: 3 linhas)")
-h_reverso = h[::-1]
-bolhas_visuais = [bolha_cor(r) for r in h_reverso]
-for i in range(0, len(bolhas_visuais), 9):
-    linha = bolhas_visuais[i:i + 9]
-    estilo = 'font-size:24px;' if i < 27 else 'font-size:20px; opacity:0.5;'  # Zona espectadora
-    bolha_html = "".join(
-        f"<span style='{estilo} margin-right:4px;'>{b}</span>" for b in linha
-    )
-    st.markdown(f"<div style='display:flex; gap:4px;'>{bolha_html}</div>", unsafe_allow_html=True)
-
-# Painel de análise
-st.subheader("📊 Análise dos últimos 27 jogadas")
-valores = get_valores(h)
+# Botões de entrada
 col1, col2, col3 = st.columns(3)
-col1.metric("Total Casa", valores.count("C"))
-col2.metric("Total Visitante", valores.count("V"))
-col3.metric("Total Empates", valores.count("E"))
+with col1:
+    if st.button("🔴 Casa", use_container_width=True): inserir("🔴")
+with col2:
+    if st.button("🔵 Visitante", use_container_width=True): inserir("🔵")
+with col3:
+    if st.button("🟡 Empate", use_container_width=True): inserir("🟡")
 
-st.write(f"Maior sequência: **{maior_sequencia(h)}**")
-st.write(f"Alternância total: **{alternancia(h)}**")
-st.write(f"Eco visual: **{eco_visual(h)}**")
-st.write(f"Eco parcial: **{eco_parcial(h)}**")
-st.write(f"Distância entre empates: **{dist_empates(h)}**")
-st.write(f"Blocos espelhados: **{blocos_espelhados(h)}**")
-st.write(f"Alternância por linha: **{alternancia_por_linha(h)}**")
-st.write(f"Tendência final: **{tendencia_final(h)}**")
+# Controles
+col4, col5 = st.columns(2)
+with col4:
+    if st.button("↩️ Desfazer", use_container_width=True): desfazer()
+with col5:
+    if st.button("🧹 Limpar", use_container_width=True): limpar()
 
-# Alertas
-st.subheader("🚨 Alerta estratégico")
-alertas = []
-if sequencia_final(h) >= 5 and valores[-1] in ["C", "V"]:
-    alertas.append("🟥 Sequência final ativa — possível inversão")
-if eco_visual(h) == "Detectado":
-    alertas.append("🔁 Eco visual detectado — possível repetição")
-if eco_parcial(h).startswith(("4", "5", "6")):
-    alertas.append("🧠 Eco parcial — padrão reescrito com semelhança")
-if dist_empates(h) == 1:
-    alertas.append("🟨 Empates consecutivos — instabilidade")
-if blocos_espelhados(h) >= 1:
-    alertas.append("🧩 Bloco espelhado — reflexo estratégico")
+# Exibir histórico
+st.divider()
+st.subheader("📋 Histórico de Jogadas (blocos de 9, direita → esquerda, mais recentes no topo)")
 
-if not alertas:
-    st.info("Nenhum padrão crítico identificado.")
+linhas = []
+for i in range(0, len(st.session_state.historico), 9):
+    linha = st.session_state.historico[i:i+9]
+    linha = linha[::-1]  # direita → esquerda
+    linhas.append(linha)
+
+linhas_exibidas = linhas[::-1]  # mais recentes no topo
+for idx, linha in enumerate(linhas_exibidas):
+    st.markdown(f"**Linha {len(linhas_exibidas)-idx}:** " + " ".join(linha))
+
+# Frequência
+st.divider()
+st.subheader("📊 Frequência de Cores")
+contagem = Counter(st.session_state.historico)
+st.write(f"🔴 Casa: {contagem['🔴']} | 🔵 Visitante: {contagem['🔵']} | 🟡 Empate: {contagem['🟡']}")
+
+# Análise de padrão reescrito
+st.divider()
+st.subheader("🧠 Detecção de Padrão Reescrito")
+
+linhas_validas = [l for l in linhas_exibidas if len(l) == 9]
+
+if len(linhas_validas) >= 2:
+    linha1 = linhas_validas[0]  # Mais recente
+    linha2 = linhas_validas[1]  # Segunda mais recente
+
+    if padrao_reescrito(linha1, linha2):
+        ultima_jogada = linha1[-1]
+        jogada_sugerida = "🔵" if ultima_jogada == "🔴" else "🔴" if ultima_jogada == "🔵" else "❓"
+        st.success(f"""
+        🔁 **Padrão reescrito com inversão cromática detectado!**
+        \nÚltima jogada: {ultima_jogada}
+        \n🎯 **Sugestão:** Jogar {jogada_sugerida} (oposto à última)
+        """)
+    else:
+        st.info("⏳ Nenhum padrão reescrito identificado entre as duas últimas linhas completas.")
+elif len(st.session_state.historico) < 18:
+    st.warning("⚠️ Registre pelo menos 18 jogadas para ativar a análise (2 linhas de 9).")
 else:
-    for alerta in alertas:
-        st.warning(alerta)
+    st.info("Aguardando segunda linha completa para análise.")
 
-# Limpar
-if st.button("🧹 Limpar histórico"):
-    st.session_state.historico = []
-    st.rerun(
+# Análise por colunas verticais
+st.divider()
+st.subheader("🧬 Análise por Colunas Verticais")
+
+ultimos_27 = st.session_state.historico[:27]
+
+if len(ultimos_27) == 27:
+    linhas_3x9 = []
+    for i in range(0, 27, 9):
+        linha = ultimos_27[i:i+9][::-1]
+        linhas_3x9.append(linha)
+
+    colunas = list(zip(*linhas_3x9))  # 9 colunas de 3 cores cada
+
+    ref_coluna_antiga = colunas[3]
+    nova_coluna = colunas[0]
+
+    if colunas_semelhantes(ref_coluna_antiga, nova_coluna):
+        coluna_apos_ref = colunas[4]
+        proxima_sugestao = coluna_apos_ref[0]
+        sugestao_convertida = "🔵" if proxima_sugestao == "🔴" else "🔴" if proxima_sugestao == "🔵" else "❓"
+
+        st.success(f"""
+        🔂 Estrutura de colunas repetida com troca de cores detectada!
+        \n📌 Coluna antiga (posição 4) ≈ Nova coluna (posição 1)
+        \n🎯 Sugestão baseada na coluna que seguiu a referência anterior:
+        **{sugestao_convertida}**
+        """)
+    else:
+        st.info("📊 Nenhum padrão repetido de colunas encontrado nas últimas 27 jogadas.")
+else:
+    st.warning("⚠️ Registre pelo menos 27 jogadas para ativar a análise por colunas verticais.")
+
+# Visualização das colunas
+if len(ultimos_27) == 27:
+    st.subheader("🧱 Visualização das Colunas Verticais (3x9)")
+
+    col_container = st.container()
+    col1, col2, col3, col4, col5, col6, col7, col8, col9 = col_container.columns(9)
+    colunas_texto = list(zip(*linhas_3x9))
+
+    for i, coluna in enumerate(colunas_texto):
+        texto = f"**Coluna {i+1}**\n" + "\n".join(coluna)
+        match i:
+            case 0: col1.markdown(texto)
+            case 1: col2.markdown(texto)
+            case 2: col3.markdown(texto)
+            case 3: col4.markdown(texto)
+            case 4: col5.markdown(texto)
+            case 5: col6.markdown(texto)
+            case 6: col7.markdown(texto)
+            case 7: col8.markdown(texto)
+            case 8: col9.markdown(texto)
